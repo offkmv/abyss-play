@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1791604169|5134081';
+const CACHE_VERSION = '1791608950|3614310';
 /** @type {string} */
 const CACHE_PREFIX = 'Abyss-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
