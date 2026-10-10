@@ -97,6 +97,23 @@ body {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Abyss">
+<style>
+/* iPhone: pin the page and canvas to the screen so Safari can't scroll or rubber-band it (that shifts the game and cuts off the bottom). */
+html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+#canvas { position: fixed; top: 0; left: 0; }
+</style>
+<script>
+/* iOS reports the new screen size late after rotating, resuming the app or closing the address bar: re-send resize a few times so Godot refits. */
+(function () {
+	function refit() { window.scrollTo(0, 0); window.dispatchEvent(new Event('resize')); }
+	function soon() { [60, 250, 600, 1200].forEach(function (t) { setTimeout(refit, t); }); }
+	window.addEventListener('orientationchange', soon);
+	window.addEventListener('pageshow', soon);
+	document.addEventListener('visibilitychange', function () { if (!document.hidden) { soon(); } });
+	if (window.visualViewport) { window.visualViewport.addEventListener('resize', function () { setTimeout(refit, 60); }); }
+	window.addEventListener('scroll', function () { if (window.scrollY || window.scrollX) { window.scrollTo(0, 0); } });
+})();
+</script>
 	</head>
 	<body>
 		<canvas id="canvas">
