@@ -114,6 +114,91 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 	window.addEventListener('scroll', function () { if (window.scrollY || window.scrollX) { window.scrollTo(0, 0); } });
 })();
 </script>
+<script>
+/* Web music (Music.gd calls window.AbyssMusic): one streaming <audio> element through a Web Audio gain.
+   Godot's own web audio decodes a whole song into one huge buffer; on iPhone the battle themes never started.
+   Browsers only allow sound after a tap, so every tap resumes audio and retries a track that was refused. */
+(function () {
+	var el = null, ctx = null, gain = null, cur = '', token = 0, vol = 1, blessed = false;
+	function setup() {
+		if (el) { return; }
+		el = new Audio();
+		el.loop = true;
+		el.preload = 'auto';
+		el.setAttribute('playsinline', '');
+		var AC = window.AudioContext || window.webkitAudioContext;
+		if (AC) {
+			try {
+				ctx = new AC();
+				gain = ctx.createGain();
+				gain.gain.value = 0;
+				ctx.createMediaElementSource(el).connect(gain);
+				gain.connect(ctx.destination);
+			} catch (e) { ctx = null; gain = null; }
+		}
+	}
+	function ramp(to, sec) {
+		if (gain) {
+			var g = gain.gain, t = ctx.currentTime;
+			g.cancelScheduledValues(t);
+			g.setValueAtTime(g.value, t);
+			g.linearRampToValueAtTime(to, t + Math.max(0.01, sec));
+		} else if (el) {
+			el.volume = Math.max(0, Math.min(1, to));
+		}
+	}
+	function start() {
+		if (!el || !cur) { return; }
+		if (ctx && ctx.state !== 'running') { ctx.resume(); }
+		var p = el.play();
+		if (p && p.catch) { p.catch(function () {}); }
+	}
+	function unlock() {
+		setup();
+		if (ctx && ctx.state !== 'running') { ctx.resume(); }
+		if (cur && el.paused) { start(); }
+		else if (!cur && !blessed) {
+			/* iPhone: an <audio> element may only start inside a tap; play a silent clip now so later tracks may start. */
+			blessed = true;
+			el.setAttribute('src', 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+			var p = el.play();
+			if (p && p.then) { p.then(function () { if (!cur) { el.pause(); } }, function () {}); }
+		}
+		if (cur) { blessed = true; }
+	}
+	['touchend', 'pointerup', 'mouseup', 'click', 'keydown'].forEach(function (ev) {
+		window.addEventListener(ev, unlock, true);
+	});
+	document.addEventListener('visibilitychange', function () {
+		if (!el) { return; }
+		if (document.hidden) { el.pause(); } else if (cur) { start(); }
+	});
+	window.AbyssMusic = {
+		play: function (url, volume, fade) {
+			setup();
+			token++;
+			cur = url;
+			vol = volume;
+			if (el.getAttribute('src') !== url) { el.setAttribute('src', url); } else { try { el.currentTime = 0; } catch (e) {} }
+			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(0, ctx.currentTime); }
+			ramp(volume, fade || 0.01);
+			start();
+		},
+		stop: function (fade, url) {
+			if (!el || (url && url !== cur)) { return; }
+			token++;
+			var mine = token;
+			cur = '';
+			ramp(0, fade || 0.01);
+			setTimeout(function () { if (token === mine) { el.pause(); } }, (fade || 0) * 1000 + 60);
+		},
+		volume: function (volume, sec) { vol = volume; ramp(volume, sec || 0.01); },
+		state: function () {
+			return el ? { src: el.getAttribute('src'), paused: el.paused, time: el.currentTime, gain: gain ? gain.gain.value : el.volume, ctx: ctx ? ctx.state : 'none', cur: cur } : null;
+		}
+	};
+})();
+</script>
 	</head>
 	<body>
 		<canvas id="canvas">
@@ -132,7 +217,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":22110692,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":22111828,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
