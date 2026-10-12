@@ -103,6 +103,22 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 #canvas { position: fixed; top: 0; left: 0; }
 </style>
 <script>
+/* Updates: the patched service worker (tools/export_web.sh) takes over as soon as a new build is installed; reload once
+   so the new game files load instead of the cached ones (otherwise the home-screen app kept the old build). */
+(function () {
+	if (!('serviceWorker' in navigator)) { return; }
+	var hadController = !!navigator.serviceWorker.controller;
+	navigator.serviceWorker.addEventListener('controllerchange', function () {
+		if (!hadController) { hadController = true; return; }
+		try { var last = Number(sessionStorage.getItem('abyss_sw_reload') || 0); if (Date.now() - last < 30000) { return; } sessionStorage.setItem('abyss_sw_reload', String(Date.now())); } catch (e) {}
+		window.location.reload();
+	});
+	window.addEventListener('load', function () {
+		navigator.serviceWorker.getRegistration().then(function (r) { if (r) { r.update(); } }).catch(function () {});
+	});
+})();
+</script>
+<script>
 /* iOS reports the new screen size late after rotating, resuming the app or closing the address bar: re-send resize a few times so Godot refits. */
 (function () {
 	function refit() { window.scrollTo(0, 0); window.dispatchEvent(new Event('resize')); }
