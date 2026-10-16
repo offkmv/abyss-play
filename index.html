@@ -192,6 +192,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 	window.AbyssMusic = {
 		play: function (url, volume, fade) {
 			setup();
+			el.loop = true;
 			token++;
 			cur = url;
 			vol = volume;
@@ -209,6 +210,19 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 			setTimeout(function () { if (token === mine) { el.pause(); } }, (fade || 0) * 1000 + 60);
 		},
 		volume: function (volume, sec) { vol = volume; ramp(volume, sec || 0.01); },
+		song: function (url, volume) {
+			setup();
+			el.loop = false;
+			token++;
+			cur = url;
+			vol = volume;
+			if (el.getAttribute('src') !== url) { el.setAttribute('src', url); }
+			try { el.currentTime = 0; } catch (e) {}
+			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(volume, ctx.currentTime); } else { el.volume = volume; }
+			start();
+		},
+		songTime: function () { if (!el || el.loop) { return -1; } return el.ended ? -2 : (el.paused && el.currentTime === 0 ? -1 : el.currentTime); },
+		pauseSong: function (paused) { if (!el) { return; } if (paused) { el.pause(); } else { start(); } },
 		state: function () {
 			return el ? { src: el.getAttribute('src'), paused: el.paused, time: el.currentTime, gain: gain ? gain.gain.value : el.volume, ctx: ctx ? ctx.state : 'none', cur: cur } : null;
 		}
@@ -233,7 +247,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":8931252,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":9070200,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
