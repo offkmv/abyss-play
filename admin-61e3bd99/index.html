@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>Abyss</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #242424;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="manifest" href="index.manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Abyss">
+<style>
+/* iPhone: pin the page and canvas to the screen so Safari can't scroll or rubber-band it (that shifts the game and cuts off the bottom). */
+html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+#canvas { position: fixed; top: 0; left: 0; }
+</style>
+<script>
+/* Updates: the patched service worker (tools/export_web.sh) takes over as soon as a new build is installed; reload once
+   so the new game files load instead of the cached ones (otherwise the home-screen app kept the old build). */
+(function () {
+	if (!('serviceWorker' in navigator)) { return; }
+	var hadController = !!navigator.serviceWorker.controller;
+	navigator.serviceWorker.addEventListener('controllerchange', function () {
+		if (!hadController) { hadController = true; return; }
+		try { var last = Number(sessionStorage.getItem('abyss_sw_reload') || 0); if (Date.now() - last < 30000) { return; } sessionStorage.setItem('abyss_sw_reload', String(Date.now())); } catch (e) {}
+		window.location.reload();
+	});
+	window.addEventListener('load', function () {
+		navigator.serviceWorker.getRegistration().then(function (r) { if (r) { r.update(); } }).catch(function () {});
+	});
+})();
+</script>
+<script>
+/* iOS reports the new screen size late after rotating, resuming the app or closing the address bar: re-send resize a few times so Godot refits. */
+(function () {
+	function refit() { window.scrollTo(0, 0); window.dispatchEvent(new Event('resize')); }
+	function soon() { [60, 250, 600, 1200].forEach(function (t) { setTimeout(refit, t); }); }
+	window.addEventListener('orientationchange', soon);
+	window.addEventListener('pageshow', soon);
+	document.addEventListener('visibilitychange', function () { if (!document.hidden) { soon(); } });
+	if (window.visualViewport) { window.visualViewport.addEventListener('resize', function () { setTimeout(refit, 60); }); }
+	window.addEventListener('scroll', function () { if (window.scrollY || window.scrollX) { window.scrollTo(0, 0); } });
+})();
+</script>
+<script>
+/* Web music (Music.gd calls window.AbyssMusic): one streaming <audio> element through a Web Audio gain.
+   Godot's own web audio decodes a whole song into one huge buffer; on iPhone the battle themes never started.
+   Browsers only allow sound after a tap, so every tap resumes audio and retries a track that was refused. */
+(function () {
+	var el = null, ctx = null, gain = null, cur = '', token = 0, vol = 1, blessed = false;
+	function setup() {
+		if (el) { return; }
+		el = new Audio();
+		el.loop = true;
+		el.preload = 'auto';
+		el.setAttribute('playsinline', '');
+		var AC = window.AudioContext || window.webkitAudioContext;
+		if (AC) {
+			try {
+				ctx = new AC();
+				gain = ctx.createGain();
+				gain.gain.value = 0;
+				ctx.createMediaElementSource(el).connect(gain);
+				gain.connect(ctx.destination);
+			} catch (e) { ctx = null; gain = null; }
+		}
+	}
+	function ramp(to, sec) {
+		if (gain) {
+			var g = gain.gain, t = ctx.currentTime;
+			g.cancelScheduledValues(t);
+			g.setValueAtTime(g.value, t);
+			g.linearRampToValueAtTime(to, t + Math.max(0.01, sec));
+		} else if (el) {
+			el.volume = Math.max(0, Math.min(1, to));
+		}
+	}
+	function start() {
+		if (!el || !cur) { return; }
+		if (ctx && ctx.state !== 'running') { ctx.resume(); }
+		var p = el.play();
+		if (p && p.catch) { p.catch(function () {}); }
+	}
+	function unlock() {
+		setup();
+		if (ctx && ctx.state !== 'running') { ctx.resume(); }
+		if (cur && el.paused) { start(); }
+		else if (!cur && !blessed) {
+			/* iPhone: an <audio> element may only start inside a tap; play a silent clip now so later tracks may start. */
+			blessed = true;
+			el.setAttribute('src', 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+			var p = el.play();
+			if (p && p.then) { p.then(function () { if (!cur) { el.pause(); } }, function () {}); }
+		}
+		if (cur) { blessed = true; }
+	}
+	['touchend', 'pointerup', 'mouseup', 'click', 'keydown'].forEach(function (ev) {
+		window.addEventListener(ev, unlock, true);
+	});
+	document.addEventListener('visibilitychange', function () {
+		if (!el) { return; }
+		if (document.hidden) { el.pause(); } else if (cur) { start(); }
+	});
+	window.AbyssMusic = {
+		play: function (url, volume, fade) {
+			setup();
+			el.loop = true;
+			token++;
+			cur = url;
+			vol = volume;
+			if (el.getAttribute('src') !== url) { el.setAttribute('src', url); } else { try { el.currentTime = 0; } catch (e) {} }
+			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(0, ctx.currentTime); }
+			ramp(volume, fade || 0.01);
+			start();
+		},
+		stop: function (fade, url) {
+			if (!el || (url && url !== cur)) { return; }
+			token++;
+			var mine = token;
+			cur = '';
+			ramp(0, fade || 0.01);
+			setTimeout(function () { if (token === mine) { el.pause(); } }, (fade || 0) * 1000 + 60);
+		},
+		volume: function (volume, sec) { vol = volume; ramp(volume, sec || 0.01); },
+		song: function (url, volume) {
+			setup();
+			el.loop = false;
+			token++;
+			cur = url;
+			vol = volume;
+			if (el.getAttribute('src') !== url) { el.setAttribute('src', url); }
+			try { el.currentTime = 0; } catch (e) {}
+			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(volume, ctx.currentTime); } else { el.volume = volume; }
+			start();
+		},
+		songTime: function () { if (!el || el.loop) { return -1; } return el.ended ? -2 : (el.paused && el.currentTime === 0 ? -1 : el.currentTime); },
+		pauseSong: function (paused) { if (!el) { return; } if (paused) { el.pause(); } else { start(); } },
+		state: function () {
+			return el ? { src: el.getAttribute('src'), paused: el.paused, time: el.currentTime, gain: gain ? gain.gain.value : el.volume, ctx: ctx ? ctx.state : 'none', cur: cur } : null;
+		}
+	};
+})();
+</script>
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":9265060,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
+
