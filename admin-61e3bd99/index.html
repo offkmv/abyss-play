@@ -135,7 +135,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
    Godot's own web audio decodes a whole song into one huge buffer; on iPhone the battle themes never started.
    Browsers only allow sound after a tap, so every tap resumes audio and retries a track that was refused. */
 (function () {
-	var el = null, ctx = null, gain = null, cur = '', token = 0, vol = 1, blessed = false;
+	var el = null, ctx = null, gain = null, master = null, mvol = 1, cur = '', token = 0, vol = 1, blessed = false;
 	function setup() {
 		if (el) { return; }
 		el = new Audio();
@@ -148,9 +148,12 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 				ctx = new AC();
 				gain = ctx.createGain();
 				gain.gain.value = 0;
+				master = ctx.createGain();   /* player's Music volume setting (AbyssMusic.master) */
+				master.gain.value = mvol;
 				ctx.createMediaElementSource(el).connect(gain);
-				gain.connect(ctx.destination);
-			} catch (e) { ctx = null; gain = null; }
+				gain.connect(master);
+				master.connect(ctx.destination);
+			} catch (e) { ctx = null; gain = null; master = null; }
 		}
 	}
 	function ramp(to, sec) {
@@ -160,7 +163,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 			g.setValueAtTime(g.value, t);
 			g.linearRampToValueAtTime(to, t + Math.max(0.01, sec));
 		} else if (el) {
-			el.volume = Math.max(0, Math.min(1, to));
+			el.volume = Math.max(0, Math.min(1, to * mvol));
 		}
 	}
 	function start() {
@@ -218,13 +221,17 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 			vol = volume;
 			if (el.getAttribute('src') !== url) { el.setAttribute('src', url); }
 			try { el.currentTime = 0; } catch (e) {}
-			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(volume, ctx.currentTime); } else { el.volume = volume; }
+			if (gain) { gain.gain.cancelScheduledValues(ctx.currentTime); gain.gain.setValueAtTime(volume, ctx.currentTime); } else { el.volume = Math.max(0, Math.min(1, volume * mvol)); }
 			start();
 		},
 		songTime: function () { if (!el || el.loop) { return -1; } return el.ended ? -2 : (el.paused && el.currentTime === 0 ? -1 : el.currentTime); },
+		master: function (v) {
+			mvol = Math.max(0, Math.min(1, v));
+			if (master) { master.gain.setValueAtTime(mvol, ctx.currentTime); } else if (el && !gain) { el.volume = Math.max(0, Math.min(1, vol * mvol)); }
+		},
 		pauseSong: function (paused) { if (!el) { return; } if (paused) { el.pause(); } else { start(); } },
 		state: function () {
-			return el ? { src: el.getAttribute('src'), paused: el.paused, time: el.currentTime, gain: gain ? gain.gain.value : el.volume, ctx: ctx ? ctx.state : 'none', cur: cur } : null;
+			return el ? { src: el.getAttribute('src'), paused: el.paused, time: el.currentTime, gain: gain ? gain.gain.value : el.volume, master: master ? master.gain.value : mvol, ctx: ctx ? ctx.state : 'none', cur: cur } : null;
 		}
 	};
 })();
@@ -247,7 +254,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":11991964,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":false,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":11999492,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
