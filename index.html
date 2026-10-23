@@ -134,6 +134,10 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 /* Web music (Music.gd calls window.AbyssMusic): one streaming <audio> element through a Web Audio gain.
    Godot's own web audio decodes a whole song into one huge buffer; on iPhone the battle themes never started.
    Browsers only allow sound after a tap, so every tap resumes audio and retries a track that was refused. */
+/* iPhone: the ring/silent switch mutes Web Audio (all of Godot's sound effects) but not the <audio> music, so on a
+   silenced phone the music played while summon sounds and Serenade voices did not (Air, 2026-10-23). 'playback' =
+   the game's audio is media, like a video: it plays with the switch on silent (Safari 16.4+; ignored elsewhere). */
+try { if (navigator.audioSession) { navigator.audioSession.type = 'playback'; } } catch (e) {}
 (function () {
 	var el = null, ctx = null, gain = null, master = null, mvol = 1, cur = '', token = 0, vol = 1, blessed = false;
 	function setup() {
@@ -174,6 +178,7 @@ html, body { position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100%
 	}
 	function unlock() {
 		setup();
+		try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') { navigator.audioSession.type = 'playback'; } } catch (e) {}
 		if (ctx && ctx.state !== 'running') { ctx.resume(); }
 		if (cur && el.paused) { start(); }
 		else if (!cur && !blessed) {
